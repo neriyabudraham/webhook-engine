@@ -143,14 +143,9 @@ window.AdminComponent = {
                     
                     // Set impersonated user token
                     localStorage.setItem('webhook_token', res.token);
-                    this.$root.token = res.token;
-                    this.$root.impersonating = { email: user.email, name: user.name };
                     
-                    // Refresh data
-                    await this.$root.fetchData();
-                    this.$emit('navigate', '/dashboard');
-                    
-                    Swal.fire({ icon: 'success', title: 'מחובר!', text: 'מחובר כ-' + user.email, toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                    // Full page reload to update all state
+                    window.location.href = '/dashboard';
                 }
             } catch (e) {
                 Swal.fire({ icon: 'error', title: 'שגיאה', text: 'לא ניתן להתחבר כמשתמש' });
