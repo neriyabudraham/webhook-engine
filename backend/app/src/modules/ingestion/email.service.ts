@@ -131,12 +131,13 @@ export class EmailIngestionService implements OnModuleInit {
           // מידע ראשי
           subject: parsed.subject,
           text: parsed.text ? parsed.text.trim() : '', 
+          html: parsed.html || '', // HTML content for preview
           
           // אובייקט שולח מסודר
           sender: {
               name: senderName,
               email: senderEmail,
-              full: this.formatAddress(parsed.from) // שימוש בפונקציית העזר
+              full: this.formatAddress(parsed.from)
           },
 
           // מערך קבצים (נקי, עם URL ושם מקורי)
@@ -149,9 +150,10 @@ export class EmailIngestionService implements OnModuleInit {
           meta: {
               date: parsed.date,
               messageId: parsed.messageId,
-              to: this.formatAddress(parsed.to),      // שימוש בפונקציית העזר (פותר את ה-TS Error)
-              replyTo: this.formatAddress(parsed.replyTo), // כנ"ל
-              clientIp: session.remoteAddress
+              to: this.formatAddress(parsed.to),
+              replyTo: this.formatAddress(parsed.replyTo),
+              clientIp: session.remoteAddress,
+              isEmail: true // flag for frontend
           }
       };
 

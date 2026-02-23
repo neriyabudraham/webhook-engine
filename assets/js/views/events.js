@@ -103,6 +103,11 @@ const eventsTemplate = `
                                 {{ JSON.stringify(ev.payload).substring(0, 60) }}...
                             </td>
                             <td class="px-6 py-4 text-left">
+                                <button v-if="ev.headers?.source === 'email' || ev.payload?.meta?.isEmail || (ev.payload?.sender && ev.payload?.subject !== undefined)" 
+                                        @click.stop="previewEmailFromList(ev)" 
+                                        class="text-purple-600 hover:underline text-xs font-bold ml-3" title="תצוגת מייל">
+                                    <i class="fa-solid fa-envelope"></i>
+                                </button>
                                 <button @click.stop="replay(ev.id)" class="text-green-600 hover:underline text-xs font-bold ml-3" title="שלח מחדש">
                                     <i class="fa-solid fa-rotate-right"></i> Replay
                                 </button>
@@ -138,12 +143,17 @@ const eventsTemplate = `
                     <p class="text-sm text-slate-500 mt-1">התקבל ב: {{ new Date(currentEvent.createdAt).toLocaleString('he-IL') }} ממקור: <b>{{ currentEvent.source ? currentEvent.source.name : 'לא ידוע' }}</b></p>
                 </div>
             </div>
-            <button @click="replay(currentEvent.id)" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 shadow-sm flex items-center gap-2 transition ml-2">
-                <i class="fa-solid fa-rotate-right"></i> שלח מחדש
-            </button>
-            <button @click="showFilterModal = true" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-sm flex items-center gap-2 transition">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> השתמש כפילטר
-            </button>
+            <div class="flex items-center gap-2">
+                <button v-if="isEmailEvent" @click="showEmailPreview = true" class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700 shadow-sm flex items-center gap-2 transition">
+                    <i class="fa-solid fa-envelope-open-text"></i> תצוגת מייל
+                </button>
+                <button @click="replay(currentEvent.id)" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 shadow-sm flex items-center gap-2 transition">
+                    <i class="fa-solid fa-rotate-right"></i> שלח מחדש
+                </button>
+                <button @click="showFilterModal = true" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-sm flex items-center gap-2 transition">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> השתמש כפילטר
+                </button>
+            </div>
         </div>
 
         <div v-if="currentEvent.payload._meta" class="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -230,13 +240,81 @@ const eventsTemplate = `
             </div>
         </div>
     </div>
+
+    <!-- Email Preview Modal -->
+    <div v-if="showEmailPreview && emailPreviewData" class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden animate-fade-in-up">
+            <div class="p-4 border-b border-slate-200 bg-gradient-to-r from-purple-50 to-white flex justify-between items-center shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
+                        <i class="fa-solid fa-envelope"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800">{{ emailPreviewData.payload.subject || 'ללא נושא' }}</h3>
+                        <p class="text-xs text-slate-500">
+                            מאת: <span class="font-bold">{{ emailPreviewData.payload.sender?.name || emailPreviewData.payload.sender?.email || 'לא ידוע' }}</span>
+                            <span v-if="emailPreviewData.payload.sender?.email" class="text-slate-400">&lt;{{ emailPreviewData.payload.sender.email }}&gt;</span>
+                        </p>
+                    </div>
+                </div>
+                <button @click="closeEmailPreview" class="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center transition text-slate-500">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            
+            <div v-if="emailPreviewData.payload.attachments && emailPreviewData.payload.attachments.length > 0" class="px-4 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-2 shrink-0">
+                <i class="fa-solid fa-paperclip text-amber-600"></i>
+                <span class="text-xs font-bold text-amber-700">קבצים מצורפים:</span>
+                <div class="flex gap-2 flex-wrap">
+                    <a v-for="att in emailPreviewData.payload.attachments" :key="att.url" :href="att.url" target="_blank" 
+                       class="text-xs bg-white px-2 py-1 rounded border border-amber-200 text-amber-700 hover:bg-amber-100 transition flex items-center gap-1">
+                        <i class="fa-solid fa-download"></i> {{ att.originalName }}
+                    </a>
+                </div>
+            </div>
+            
+            <div class="flex-1 overflow-hidden bg-slate-100 p-4">
+                <iframe v-if="emailPreviewData.payload.html" :srcdoc="emailPreviewData.payload.html" 
+                        class="w-full h-full bg-white rounded-lg border border-slate-200 shadow-inner"
+                        sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+                <div v-else class="w-full h-full bg-white rounded-lg border border-slate-200 p-6 overflow-auto">
+                    <pre class="text-sm text-slate-700 whitespace-pre-wrap font-sans">{{ emailPreviewData.payload.text || 'אין תוכן טקסט' }}</pre>
+                </div>
+            </div>
+            
+            <div class="p-3 border-t border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
+                <div class="text-xs text-slate-500">
+                    <span v-if="emailPreviewData.payload.meta?.date">{{ new Date(emailPreviewData.payload.meta.date).toLocaleString('he-IL') }}</span>
+                </div>
+                <div class="flex gap-2">
+                    <button @click="openEmailInNewTab" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition flex items-center gap-2">
+                        <i class="fa-solid fa-up-right-from-square"></i> פתח בחלון חדש
+                    </button>
+                    <button @click="closeEmailPreview" class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-bold hover:bg-purple-700 transition">
+                        סגור
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>`;
 
 window.EventsComponent = {
     props: ['currentEvent', 'destinations'],
     template: eventsTemplate,
-    data() { return { events: [], loading: false, page: 1, totalPages: 1, totalItems: 0, limit: 20, searchTerm: '', startDate: '', endDate: '', searchTimeout: null, showFilterModal: false, targetDestId: '' } },
+    data() { return { events: [], loading: false, page: 1, totalPages: 1, totalItems: 0, limit: 20, searchTerm: '', startDate: '', endDate: '', searchTimeout: null, showFilterModal: false, targetDestId: '', showEmailPreview: false, previewEvent: null } },
     mounted() { this.fetchEvents(); },
+    computed: {
+        isEmailEvent() {
+            if (!this.currentEvent) return false;
+            const headers = this.currentEvent.headers || {};
+            const payload = this.currentEvent.payload || {};
+            return headers.source === 'email' || payload.meta?.isEmail || (payload.sender && payload.subject !== undefined);
+        },
+        emailPreviewData() {
+            return this.previewEvent || this.currentEvent;
+        }
+    },
     watch: {
         limit() { this.page = 1; this.fetchEvents(); },
         startDate() { this.page = 1; this.fetchEvents(); },
@@ -298,6 +376,34 @@ window.EventsComponent = {
             localStorage.setItem('temp_filter_payload', JSON.stringify(this.currentEvent.payload));
             this.$emit('navigate', '/filter-editor/' + this.targetDestId);
             this.showFilterModal = false;
+        },
+        openEmailInNewTab() {
+            const event = this.emailPreviewData;
+            if (!event) return;
+            const html = event.payload.html || `<pre style="font-family: sans-serif; padding: 20px;">${event.payload.text || 'אין תוכן'}</pre>`;
+            const fullHtml = `<!DOCTYPE html>
+<html dir="auto">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${event.payload.subject || 'Email Preview'}</title>
+    <style>body { margin: 0; padding: 0; }</style>
+</head>
+<body>${html}</body>
+</html>`;
+            const newWindow = window.open('', '_blank');
+            if (newWindow) {
+                newWindow.document.write(fullHtml);
+                newWindow.document.close();
+            }
+        },
+        previewEmailFromList(ev) {
+            this.previewEvent = ev;
+            this.showEmailPreview = true;
+        },
+        closeEmailPreview() {
+            this.showEmailPreview = false;
+            this.previewEvent = null;
         }
     }
 };
