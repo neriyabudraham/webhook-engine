@@ -78,8 +78,13 @@ window.AdminComponent = {
                             {{ user.sourcesCount }} מקורות / {{ user.eventsCount }} אירועים
                         </td>
                         <td class="px-6 py-4 text-slate-400 text-xs">{{ new Date(user.createdAt).toLocaleDateString('he-IL') }}</td>
-                        <td class="px-6 py-4">
-                            <button @click="deleteUser(user.id)" class="text-red-400 hover:text-red-600 p-2"><i class="fa-regular fa-trash-can"></i></button>
+                        <td class="px-6 py-4 flex items-center gap-1">
+                            <button @click="impersonate(user)" class="text-blue-400 hover:text-blue-600 p-2" title="התחבר כמשתמש">
+                                <i class="fa-solid fa-right-to-bracket"></i>
+                            </button>
+                            <button @click="deleteUser(user.id)" class="text-red-400 hover:text-red-600 p-2" title="מחק">
+                                <i class="fa-regular fa-trash-can"></i>
+                            </button>
                         </td>
                     </tr>
                 </tbody>
@@ -100,6 +105,38 @@ window.AdminComponent = {
             await this.$root.api('/admin/users/' + user.id, 'PATCH', { plan: newPlan, monthlyLimit: newLimit });
             const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
             Toast.fire({ icon: 'success', title: 'החבילה עודכנה' });
+        },
+        async impersonate(user) {
+            const result = await Swal.fire({
+                title: 'התחבר כמשתמש',
+                html: `<p>להתחבר כ-<b>${user.email}</b>?</p><p class="text-sm text-slate-500 mt-2">תוכל לחזור לחשבון המנהל בכל עת.</p>`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'התחבר',
+                cancelButtonText: 'ביטול'
+            });
+            if (!result.isConfirmed) return;
+            
+            try {
+                const res = await this.$root.api('/admin/impersonate/' + user.id, 'POST');
+                if (res && res.token) {
+                    // Save admin token for return
+                    localStorage.setItem('admin_token', this.$root.token);
+                    localStorage.setItem('impersonating', JSON.stringify({ email: user.email, name: user.name }));
+                    
+                    // Set impersonated user token
+                    localStorage.setItem('webhook_token', res.token);
+                    this.$root.token = res.token;
+                    
+                    // Refresh data
+                    await this.$root.fetchData();
+                    this.$emit('navigate', '/dashboard');
+                    
+                    Swal.fire({ icon: 'success', title: 'מחובר!', text: 'מחובר כ-' + user.email, toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                }
+            } catch (e) {
+                Swal.fire({ icon: 'error', title: 'שגיאה', text: 'לא ניתן להתחבר כמשתמש' });
+            }
         }
     }
 };

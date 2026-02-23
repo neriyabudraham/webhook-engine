@@ -17,7 +17,10 @@ createApp({
             sources: [], destinations: [], events: [],
             
             // Selected Items
-            currentSource: null, currentDest: null, currentEvent: null
+            currentSource: null, currentDest: null, currentEvent: null,
+            
+            // Impersonation
+            impersonating: JSON.parse(localStorage.getItem('impersonating') || 'null')
         }
     },
     computed: {
@@ -178,7 +181,35 @@ createApp({
         },
         
         confirmLogout() { Swal.fire({ title: 'להתנתק?', icon: 'question', showCancelButton: true, confirmButtonText: 'כן' }).then((res) => { if (res.isConfirmed) this.performLogout(); }) },
-        performLogout() { localStorage.removeItem('webhook_token'); this.token = ''; window.location.href = '/login'; },
+        performLogout() { 
+            localStorage.removeItem('webhook_token'); 
+            localStorage.removeItem('admin_token');
+            localStorage.removeItem('impersonating');
+            this.token = ''; 
+            this.impersonating = null;
+            window.location.href = '/login'; 
+        },
+        async exitImpersonation() {
+            const adminToken = localStorage.getItem('admin_token');
+            if (!adminToken) {
+                this.performLogout();
+                return;
+            }
+            
+            // Restore admin token
+            localStorage.setItem('webhook_token', adminToken);
+            localStorage.removeItem('admin_token');
+            localStorage.removeItem('impersonating');
+            
+            this.token = adminToken;
+            this.impersonating = null;
+            
+            // Refresh data with admin token
+            await this.fetchData();
+            this.navigate('/admin');
+            
+            Swal.fire({ icon: 'success', title: 'חזרת לחשבון המנהל', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+        },
         getWebhookUrl(slug) { return window.location.origin + '/webhook/' + slug; },
         copyToClipboard(text) { navigator.clipboard.writeText(text); Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 }).fire({ icon: 'success', title: 'הועתק' }); },
     }

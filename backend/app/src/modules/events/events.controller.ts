@@ -1,4 +1,4 @@
-import { Controller, Get, Post, UseGuards, Request, Param, NotFoundException, Query } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards, Request, Param, NotFoundException, Query, Body, ForbiddenException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { PrismaService } from '../../prisma.service';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -63,6 +63,49 @@ export class EventsController {
     });
     
     return { data: events };
+  }
+
+  @Post('send-custom')
+  async sendCustomEvent(@Request() req, @Body() body: { sourceId: string; payload: any }) {
+    // Verify source ownership
+    const source = await this.prisma.source.findFirst({
+      where: { id: body.sourceId, userId: req.user.userId }
+    });
+    
+    if (!source) throw new ForbiddenException('Source not found or not owned by user');
+
+    // Create new event with custom payload
+    const newEvent = await this.prisma.event.create({
+      data: {
+        sourceId: body.sourceId,
+        payload: {
+          ...body.payload,
+          _custom: {
+            createdAt: new Date().toISOString(),
+            manual: true
+          }
+        },
+        headers: { source: 'manual', createdBy: req.user.userId }
+      }
+    });
+
+    // Increment usage counter
+    await this.prisma.user.update({
+      where: { id: req.user.userId },
+      data: { usageCount: { increment: 1 } }
+    });
+
+    // Add to processing queue
+    await this.webhookQueue.add('process-webhook', {
+      eventId: newEvent.id,
+      sourceId: newEvent.sourceId
+    }, {
+      attempts: 3,
+      backoff: 5000,
+      removeOnComplete: true
+    });
+
+    return { success: true, message: 'Custom event created', eventId: newEvent.id };
   }
 
   @Get(':id')

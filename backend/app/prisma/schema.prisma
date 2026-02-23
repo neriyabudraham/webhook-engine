@@ -55,6 +55,7 @@ model User {
   
   // התיקון: הוספת הקשר ההפוך למפתחות API
   apiKeys           ApiKey[]
+  outboundEmails    OutboundEmail[]
 
   @@map("users")
 }
@@ -159,4 +160,19 @@ model ApiKey {
   user      User     @relation(fields: [userId], references: [id])
 
   @@map("api_keys")
+}
+
+model OutboundEmail {
+  id        String   @id @default(uuid())
+  userId    String
+  to        String[]
+  subject   String
+  status    String
+  messageId String?
+  error     String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("outbound_emails")
 }

@@ -15,6 +15,7 @@ import { AiModule } from './modules/ai/ai.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { MailModule } from './modules/mail/mail.module';
+import { OutboundModule } from './modules/outbound/outbound.module';
 
 @Module({
   imports: [
@@ -44,7 +45,8 @@ import { MailModule } from './modules/mail/mail.module';
     AiModule, 
     AdminModule, 
     BillingModule,
-    MailModule
+    MailModule,
+    OutboundModule
   ],
   providers: [PrismaService],
 })

@@ -1,11 +1,15 @@
-import { Controller, Get, Delete, Patch, UseGuards, Request, ForbiddenException, Param, Body } from '@nestjs/common';
+import { Controller, Get, Delete, Patch, Post, UseGuards, Request, ForbiddenException, Param, Body, NotFoundException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma.service';
 
 @Controller('admin')
 @UseGuards(AuthGuard('jwt'))
 export class AdminController {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private jwtService: JwtService
+  ) {}
 
   private checkAdmin(req) {
     if (req.user.role !== 'ADMIN') throw new ForbiddenException('Admins only');
@@ -54,5 +58,23 @@ export class AdminController {
   async updateUser(@Request() req, @Param('id') id: string, @Body() body: any) {
     this.checkAdmin(req);
     return this.prisma.user.update({ where: { id }, data: body });
+  }
+
+  @Post('impersonate/:id')
+  async impersonateUser(@Request() req, @Param('id') id: string) {
+    this.checkAdmin(req);
+    
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    
+    // Generate token for the target user
+    const token = this.jwtService.sign({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      impersonatedBy: req.user.userId
+    });
+    
+    return { token, user: { id: user.id, email: user.email, name: user.name } };
   }
 }

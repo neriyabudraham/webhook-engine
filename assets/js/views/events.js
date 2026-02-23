@@ -147,6 +147,9 @@ const eventsTemplate = `
                 <button v-if="isEmailEvent" @click="showEmailPreview = true" class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700 shadow-sm flex items-center gap-2 transition">
                     <i class="fa-solid fa-envelope-open-text"></i> תצוגת מייל
                 </button>
+                <button @click="openEditReplay(currentEvent)" class="bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-amber-600 shadow-sm flex items-center gap-2 transition">
+                    <i class="fa-solid fa-pen-to-square"></i> ערוך ושלח
+                </button>
                 <button @click="replay(currentEvent.id)" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 shadow-sm flex items-center gap-2 transition">
                     <i class="fa-solid fa-rotate-right"></i> שלח מחדש
                 </button>
@@ -241,6 +244,48 @@ const eventsTemplate = `
         </div>
     </div>
 
+    <!-- Edit & Replay Modal -->
+    <div v-if="showEditModal" class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[80vh] flex flex-col overflow-hidden animate-fade-in-up">
+            <div class="p-4 border-b border-slate-200 bg-gradient-to-r from-amber-50 to-white flex justify-between items-center shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800">עריכה ושליחה מחדש</h3>
+                        <p class="text-xs text-slate-500">ערוך את ה-JSON ושלח כאירוע חדש</p>
+                    </div>
+                </div>
+                <button @click="showEditModal = false" class="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center transition text-slate-500">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="flex-1 overflow-hidden p-4 bg-slate-50">
+                <textarea v-model="editPayloadStr" 
+                          class="w-full h-full bg-[#1e293b] text-green-400 font-mono text-xs p-4 rounded-xl border border-slate-600 outline-none resize-none"
+                          dir="ltr" spellcheck="false"></textarea>
+            </div>
+            
+            <div v-if="editError" class="px-4 py-2 bg-red-50 border-t border-red-200 text-red-600 text-xs font-bold">
+                <i class="fa-solid fa-circle-exclamation"></i> {{ editError }}
+            </div>
+            
+            <div class="p-4 border-t border-slate-200 bg-white flex justify-between items-center shrink-0">
+                <button @click="formatEditJson" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition flex items-center gap-2">
+                    <i class="fa-solid fa-align-left"></i> פרמט JSON
+                </button>
+                <div class="flex gap-2">
+                    <button @click="showEditModal = false" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition">ביטול</button>
+                    <button @click="sendEditedEvent" class="px-6 py-2 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition flex items-center gap-2">
+                        <i class="fa-solid fa-paper-plane"></i> שלח
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Email Preview Modal -->
     <div v-if="showEmailPreview && emailPreviewData" class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden animate-fade-in-up">
@@ -274,11 +319,11 @@ const eventsTemplate = `
             </div>
             
             <div class="flex-1 overflow-hidden bg-slate-100 p-4">
-                <iframe v-if="emailPreviewData.payload.html" :srcdoc="emailPreviewData.payload.html" 
+                <iframe v-if="emailPreviewData.payload.html" :srcdoc="getEnhancedEmailHtml(emailPreviewData.payload.html)" 
                         class="w-full h-full bg-white rounded-lg border border-slate-200 shadow-inner"
                         sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
                 <div v-else class="w-full h-full bg-white rounded-lg border border-slate-200 p-6 overflow-auto">
-                    <pre class="text-sm text-slate-700 whitespace-pre-wrap font-sans">{{ emailPreviewData.payload.text || 'אין תוכן טקסט' }}</pre>
+                    <div class="text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">{{ emailPreviewData.payload.text || 'אין תוכן טקסט' }}</div>
                 </div>
             </div>
             
@@ -302,7 +347,7 @@ const eventsTemplate = `
 window.EventsComponent = {
     props: ['currentEvent', 'destinations'],
     template: eventsTemplate,
-    data() { return { events: [], loading: false, page: 1, totalPages: 1, totalItems: 0, limit: 20, searchTerm: '', startDate: '', endDate: '', searchTimeout: null, showFilterModal: false, targetDestId: '', showEmailPreview: false, previewEvent: null } },
+    data() { return { events: [], loading: false, page: 1, totalPages: 1, totalItems: 0, limit: 20, searchTerm: '', startDate: '', endDate: '', searchTimeout: null, showFilterModal: false, targetDestId: '', showEmailPreview: false, previewEvent: null, showEditModal: false, editPayloadStr: '', editSourceId: '', editError: '' } },
     mounted() { this.fetchEvents(); },
     computed: {
         isEmailEvent() {
@@ -404,6 +449,67 @@ window.EventsComponent = {
         closeEmailPreview() {
             this.showEmailPreview = false;
             this.previewEvent = null;
+        },
+        openEditReplay(event) {
+            this.editSourceId = event.sourceId || event.source?.id;
+            this.editPayloadStr = JSON.stringify(event.payload, null, 2);
+            this.editError = '';
+            this.showEditModal = true;
+        },
+        formatEditJson() {
+            try {
+                const parsed = JSON.parse(this.editPayloadStr);
+                this.editPayloadStr = JSON.stringify(parsed, null, 2);
+                this.editError = '';
+            } catch (e) {
+                this.editError = 'JSON לא תקין: ' + e.message;
+            }
+        },
+        getEnhancedEmailHtml(html) {
+            return `<!DOCTYPE html>
+<html dir="auto">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { 
+            margin: 0; 
+            padding: 16px; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #1e293b;
+            background: #fff;
+        }
+        img { max-width: 100%; height: auto; }
+        a { color: #2563eb; }
+        table { max-width: 100% !important; }
+        * { box-sizing: border-box; }
+    </style>
+</head>
+<body>${html}</body>
+</html>`;
+        },
+        async sendEditedEvent() {
+            this.editError = '';
+            let payload;
+            try {
+                payload = JSON.parse(this.editPayloadStr);
+            } catch (e) {
+                this.editError = 'JSON לא תקין: ' + e.message;
+                return;
+            }
+            
+            try {
+                const res = await this.$root.api('/my/events/send-custom', 'POST', {
+                    sourceId: this.editSourceId,
+                    payload: payload
+                });
+                this.showEditModal = false;
+                Swal.fire({ icon: 'success', title: 'נשלח!', text: 'האירוע המותאם נוסף לתור', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                setTimeout(() => this.fetchEvents(), 2000);
+            } catch (e) {
+                this.editError = 'שגיאה בשליחה';
+            }
         }
     }
 };

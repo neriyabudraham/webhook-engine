@@ -13,7 +13,15 @@ window.SettingsComponent = {
 
             loading: false,
 
-            createdKey: null
+            createdKey: null,
+
+            emailForm: { to: '', subject: '', html: '' },
+
+            sendingEmail: false,
+
+            showEmailHistory: false,
+
+            emailHistory: []
 
         }
 
@@ -249,7 +257,64 @@ window.SettingsComponent = {
 
         </div>
 
-
+        <!-- Outbound Email Section -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-8">
+            <div class="p-6 border-b border-slate-100 bg-gradient-to-r from-purple-50 to-white">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-purple-500 flex items-center justify-center text-white shadow-sm">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-lg">שליחת מיילים (SMTP)</h3>
+                        <p class="text-xs text-slate-500">שלח מיילים דרך המערכת - כל מייל נספר למכסה</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="p-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">נמען (To)</label>
+                        <input v-model="emailForm.to" type="email" placeholder="example@domain.com" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-purple-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">נושא (Subject)</label>
+                        <input v-model="emailForm.subject" placeholder="נושא המייל" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-purple-500">
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-xs font-bold text-slate-500 mb-1">תוכן (HTML או טקסט)</label>
+                    <textarea v-model="emailForm.html" rows="6" placeholder="<p>תוכן המייל...</p>" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-purple-500 font-mono" dir="ltr"></textarea>
+                </div>
+                
+                <div class="flex justify-between items-center">
+                    <button @click="toggleEmailHistory" class="text-purple-600 hover:underline text-sm font-medium">
+                        <i class="fa-solid fa-clock-rotate-left ml-1"></i> היסטוריית שליחות
+                    </button>
+                    <button @click="sendEmail" :disabled="!emailForm.to || !emailForm.subject || sendingEmail" class="bg-purple-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-purple-700 disabled:opacity-50 transition shadow-sm flex items-center gap-2">
+                        <i class="fa-solid fa-paper-plane" :class="{'fa-spin': sendingEmail}"></i> שלח מייל
+                    </button>
+                </div>
+            </div>
+            
+            <div v-if="showEmailHistory" class="border-t border-slate-200 p-6 bg-slate-50">
+                <h4 class="font-bold text-slate-700 text-sm mb-4">היסטוריית שליחות אחרונות</h4>
+                <div v-if="emailHistory.length === 0" class="text-slate-400 text-sm italic text-center py-6">אין היסטוריה</div>
+                <div v-else class="space-y-2 max-h-64 overflow-y-auto">
+                    <div v-for="email in emailHistory" :key="email.id" class="bg-white p-3 rounded-lg border border-slate-200 flex justify-between items-center text-sm">
+                        <div>
+                            <div class="font-bold text-slate-700">{{ email.subject }}</div>
+                            <div class="text-xs text-slate-400">{{ email.to.join(', ') }}</div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span :class="email.status === 'SENT' ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'" class="px-2 py-1 rounded text-xs font-bold">{{ email.status }}</span>
+                            <span class="text-xs text-slate-400">{{ formatDate(email.createdAt, true) }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
     </div>
 
@@ -350,6 +415,62 @@ window.SettingsComponent = {
             const now = new Date();
 
             return (now - d) < 1000 * 60 * 5; 
+
+        },
+
+        async sendEmail() {
+
+            if (!this.emailForm.to || !this.emailForm.subject) return;
+
+            this.sendingEmail = true;
+
+            try {
+
+                const res = await this.$root.api('/my/outbound/send', 'POST', this.emailForm);
+
+                if (res.success) {
+
+                    Swal.fire({ icon: 'success', title: 'נשלח!', text: 'המייל נשלח בהצלחה', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+
+                    this.emailForm = { to: '', subject: '', html: '' };
+
+                    this.$root.fetchData();
+
+                    if (this.showEmailHistory) this.fetchEmailHistory();
+
+                } else {
+
+                    Swal.fire({ icon: 'error', title: 'שגיאה', text: res.error || 'לא ניתן לשלוח' });
+
+                }
+
+            } catch(e) {
+
+                Swal.fire({ icon: 'error', title: 'שגיאה', text: 'לא ניתן לשלוח מייל' });
+
+            }
+
+            this.sendingEmail = false;
+
+        },
+
+        async toggleEmailHistory() {
+
+            this.showEmailHistory = !this.showEmailHistory;
+
+            if (this.showEmailHistory) this.fetchEmailHistory();
+
+        },
+
+        async fetchEmailHistory() {
+
+            try {
+
+                const res = await this.$root.api('/my/outbound/history?limit=20');
+
+                this.emailHistory = res || [];
+
+            } catch(e) {}
 
         }
 

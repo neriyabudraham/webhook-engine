@@ -103,6 +103,21 @@
             </aside>
 
             <main class="flex-1 flex flex-col h-full overflow-hidden bg-[#f8fafc]">
+                <!-- Impersonation Banner -->
+                <div v-if="impersonating" class="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-2 flex items-center justify-between gap-4 shrink-0 shadow-md z-40">
+                    <div class="flex items-center gap-3">
+                        <i class="fa-solid fa-user-secret text-xl"></i>
+                        <div>
+                            <span class="font-bold">מצב צפייה:</span>
+                            <span class="mr-2">{{ impersonating.email }}</span>
+                            <span class="text-amber-100 text-xs">({{ impersonating.name || 'ללא שם' }})</span>
+                        </div>
+                    </div>
+                    <button @click="exitImpersonation" class="bg-white/20 hover:bg-white/30 px-4 py-1.5 rounded-lg text-sm font-bold transition flex items-center gap-2">
+                        <i class="fa-solid fa-right-from-bracket"></i> חזור למנהל
+                    </button>
+                </div>
+                
                 <header class="h-20 flex items-center justify-between px-8 bg-white border-b border-slate-200 sticky top-0 z-30 shrink-0">
                     <div class="flex items-center gap-4">
                         <button @click="mobileMenuOpen = true" class="md:hidden text-slate-500 hover:text-indigo-600 p-1"><i class="fa-solid fa-bars text-xl"></i></button>
