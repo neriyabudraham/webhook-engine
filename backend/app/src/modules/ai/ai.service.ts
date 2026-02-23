@@ -20,7 +20,7 @@ export class AiService {
     });
   }
 
-  async generateFilter(userPrompt: string, sampleData?: any): Promise<{ code: string; description: string }> {
+  async generateFilter(userPrompt: string, sampleData?: any): Promise<{ filter: any; description: string }> {
     try {
       if (!process.env.OPENAI_API_KEY) {
          throw new Error('OPENAI_API_KEY is missing');
@@ -33,38 +33,35 @@ export class AiService {
       }
 
       const systemPrompt = `
-      You are an expert JavaScript developer for a Webhook Filtering Engine.
-      Your goal is to convert natural language requirements into a ROBUST JavaScript boolean expression.
+      You are an expert at creating JSON-based filters for a Webhook Filtering Engine.
+      Your goal is to convert natural language requirements into a JSON filter object.
 
-      ### Input Context:
-      - Variable 'event' is available.
-      - 'event.payload': The JSON body.
+      ### Filter Format (MongoDB-like query syntax):
+      - Simple equality: { "field.path": "value" }
+      - Regex match: { "field.path": { "$regex": "pattern" } }
+      - OR conditions: { "$or": [ { "field1": "val1" }, { "field2": "val2" } ] }
+      - AND conditions: { "$and": [ { "field1": "val1" }, { "field2": "val2" } ] }
 
-      ### CRITICAL RULES FOR ROBUSTNESS:
-      1. **Text Search (The "Catch-All" Rule):** If the user asks to check if the event "contains" a word, or "text is X", DO NOT assume the field path (like .body or .message). 
-         Instead, convert the whole payload to a string.
-         INVALID: event.payload?.body?.includes('word')  <-- DO NOT DO THIS
-         VALID:   JSON.stringify(event.payload).includes('word') <-- DO THIS!
+      ### IMPORTANT RULES:
+      1. Look at the sample payload structure to find the correct field paths.
+      2. Use dot notation for nested fields (e.g., "data.message.text").
+      3. For text search in any field, use: { "_fullText": { "$regex": "searchWord" } }
+      4. Always return valid JSON filter object.
 
-      2. **Specific Fields (Numbers/Booleans):**
-         Only use specific paths if the user asks for numerical comparisons (e.g. "price > 50").
-         ALWAYS use optional chaining (?.).
-         Example: event.payload?.order?.price > 50
-
-      3. **Output Format:**
-         Return a JSON object with:
-         - "code": The boolean expression.
-         - "description": A short explanation in HEBREW (עברית).
+      ### Output Format:
+      Return a JSON object with:
+      - "filter": The JSON filter object
+      - "description": A short explanation in HEBREW (עברית)
 
       ### Examples:
       User: "אם ההודעה מכילה את המילה 'בדיקה'"
-      Output: { "code": "JSON.stringify(event.payload).includes('בדיקה')", "description": "מחפש את המילה 'בדיקה' בכל מקום בתוכן האירוע" }
+      Output: { "filter": { "_fullText": { "$regex": "בדיקה" } }, "description": "מחפש את המילה 'בדיקה' בכל תוכן האירוע" }
 
       User: "רק אם הסטטוס הוא 'paid'"
-      Output: { "code": "JSON.stringify(event.payload).includes('paid')", "description": "מוודא שהמילה 'paid' קיימת בתוכן האירוע" }
+      Output: { "filter": { "status": "paid" }, "description": "מסנן רק אירועים עם סטטוס paid" }
       
-      User: "אם המחיר גדול מ-100"
-      Output: { "code": "event.payload?.price > 100", "description": "מסנן עסקאות עם מחיר גבוה מ-100" }
+      User: "אם סוג האירוע הוא הודעה או תמונה"
+      Output: { "filter": { "$or": [ { "type": "message" }, { "type": "image" } ] }, "description": "מאפשר הודעות טקסט או תמונות" }
 
       ### Real Data Context:
       ${contextStr}
@@ -92,7 +89,7 @@ export class AiService {
       }
 
       return { 
-          code: result.code || "false", 
+          filter: result.filter || {},
           description: result.description || "נוצר ללא תיאור" 
       };
 

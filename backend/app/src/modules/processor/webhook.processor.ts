@@ -122,17 +122,30 @@ export class WebhookProcessor extends WorkerHost {
         }
     }
 
-    // מקרה ב': JSON Object (תמיכה בגרסאות ישנות)
+    // מקרה ב': JSON Object - פילטרי JSON
     if (typeof rules === 'object') {
         if (rules['$or'] && Array.isArray(rules['$or'])) return rules['$or'].some(rule => this.evaluateRules(rule, context, destUrl));
         if (rules['$and'] && Array.isArray(rules['$and'])) return rules['$and'].every(rule => this.evaluateRules(rule, context, destUrl));
 
         for (const key in rules) {
           if (key.startsWith('$')) continue;
-          const actualVal = this.getValueByPath(context.body, key);
+          
           const condition = rules[key];
+          
+          // תמיכה בחיפוש טקסט מלא (_fullText)
+          if (key === '_fullText') {
+            const fullText = JSON.stringify(context.body);
+            if (condition && typeof condition === 'object' && condition['$regex']) {
+              if (!new RegExp(condition['$regex'], 'i').test(fullText)) return false;
+            } else if (!fullText.includes(String(condition))) {
+              return false;
+            }
+            continue;
+          }
+          
+          const actualVal = this.getValueByPath(context.body, key);
           if (condition && typeof condition === 'object' && condition['$regex']) {
-            if (!new RegExp(condition['$regex']).test(actualVal)) return false;
+            if (!new RegExp(condition['$regex'], 'i').test(String(actualVal))) return false;
           } else if (actualVal != condition) {
             return false;
           }

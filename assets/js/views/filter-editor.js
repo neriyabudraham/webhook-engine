@@ -165,57 +165,74 @@ window.FilterEditorComponent = {
         },
 
         insertSnippet(type) {
-            const snippets = { 'OR': '"$or": [ \n    { "field": "val1" }, \n    { "field": "val2" } \n  ]', 'AND': '"$and": [ \n    { "field": "val1" }, \n    { "other": "val2" } \n  ]', 'REGEX': '"field": { "$regex": "^start" }' };
-            this.rulesString = this.rulesString.replace(/}\s*$/, `,\n  ${snippets[type]}\n}`);
+            const snippets = { 
+                'OR': '"$or": [ \n    { "field": "val1" }, \n    { "field": "val2" } \n  ]', 
+                'AND': '"$and": [ \n    { "field": "val1" }, \n    { "other": "val2" } \n  ]', 
+                'REGEX': '"field": { "$regex": "pattern" }',
+                'FULLTEXT': '"_fullText": { "$regex": "מילה" }'
+            };
+            try {
+                const parsed = JSON.parse(this.rulesString);
+                parsed[type === 'OR' ? '$or' : type === 'AND' ? '$and' : type === 'FULLTEXT' ? '_fullText' : 'newField'] = type === 'OR' || type === 'AND' ? [] : type === 'FULLTEXT' ? { "$regex": "מילה" } : { "$regex": "pattern" };
+                this.rulesString = JSON.stringify(parsed, null, 2);
+            } catch(e) {
+                this.rulesString = this.rulesString.replace(/}\s*$/, `,\n  ${snippets[type]}\n}`);
+            }
         },
         
         runTest() {
             try {
                 let rules;
-                let isCode = false;
                 try {
                      rules = JSON.parse(this.rulesString);
                 } catch(e) {
-                     isCode = true;
+                     Swal.fire('שגיאה', 'הפילטר חייב להיות בפורמט JSON תקין', 'error');
+                     this.testResult = false;
+                     return;
                 }
                 
-                // --- התיקון: קילוף המעטפה (Unwrap) ---
+                // קילוף מעטפה אם קיימת
                 let rawPayload = JSON.parse(this.selectedEventBody);
                 if (rawPayload && typeof rawPayload === 'object' && 'payload' in rawPayload && 'event' in rawPayload) {
                     rawPayload = rawPayload.payload;
                 }
 
-                const context = { 
-                    event: { payload: rawPayload, headers: {}, query: {} },
-                    body: rawPayload, 
-                    headers: {} 
-                }; 
+                const context = { body: rawPayload }; 
                 
-                if (isCode) {
-                    try {
-                        const checkFunc = new Function('event', 'body', 'headers', `return (${this.rulesString});`);
-                        this.testResult = !!checkFunc(context.event, context.body, context.headers);
-                    } catch(err) {
-                        console.error(err);
-                        Swal.fire('שגיאה', 'שגיאה בקוד הפילטר: ' + err.message, 'error');
-                        this.testResult = false;
-                    }
-                } else {
-                    const getValue = (obj, path) => path.split('.').reduce((acc, part) => acc && acc[part], obj);
-                    const evaluate = (r, ctx) => {
-                         if (!r || Object.keys(r).length === 0) return true;
-                         for (const key in r) {
-                             if (key === '$or') return r[key].some(x => evaluate(x, ctx));
-                             if (key === '$and') return r[key].every(x => evaluate(x, ctx));
-                             const val = getValue(ctx.body, key);
-                             const cond = r[key];
-                             if (typeof cond === 'object' && cond['$regex']) { if (!new RegExp(cond['$regex'], 'i').test(String(val))) return false; } else if (val != cond) return false;
+                const getValue = (obj, path) => path.split('.').reduce((acc, part) => acc && acc[part], obj);
+                const evaluate = (r, ctx) => {
+                     if (!r || Object.keys(r).length === 0) return true;
+                     for (const key in r) {
+                         if (key === '$or') return r[key].some(x => evaluate(x, ctx));
+                         if (key === '$and') return r[key].every(x => evaluate(x, ctx));
+                         
+                         const cond = r[key];
+                         
+                         // תמיכה בחיפוש טקסט מלא
+                         if (key === '_fullText') {
+                             const fullText = JSON.stringify(ctx.body);
+                             if (typeof cond === 'object' && cond['$regex']) {
+                                 if (!new RegExp(cond['$regex'], 'i').test(fullText)) return false;
+                             } else if (!fullText.includes(String(cond))) {
+                                 return false;
+                             }
+                             continue;
                          }
-                         return true;
-                    };
-                    this.testResult = evaluate(rules, context);
-                }
-            } catch (e) { Swal.fire('שגיאה', 'שגיאה כללית בבדיקה', 'error'); }
+                         
+                         const val = getValue(ctx.body, key);
+                         if (typeof cond === 'object' && cond['$regex']) { 
+                             if (!new RegExp(cond['$regex'], 'i').test(String(val))) return false; 
+                         } else if (val != cond) {
+                             return false;
+                         }
+                     }
+                     return true;
+                };
+                this.testResult = evaluate(rules, context);
+            } catch (e) { 
+                console.error(e);
+                Swal.fire('שגיאה', 'שגיאה כללית בבדיקה', 'error'); 
+            }
         },
         
         async save() {
@@ -225,11 +242,11 @@ window.FilterEditorComponent = {
                 try {
                     rulesToSend = JSON.parse(this.rulesString);
                 } catch(e) {
-                    if (this.rulesString && this.rulesString.trim().length > 0) {
-                        rulesToSend = this.rulesString;
-                    } else {
-                        return Swal.fire('שגיאה', 'הפילטר ריק', 'warning');
-                    }
+                    return Swal.fire('שגיאה', 'הפילטר חייב להיות בפורמט JSON תקין', 'error');
+                }
+                
+                if (!rulesToSend || Object.keys(rulesToSend).length === 0) {
+                    return Swal.fire('שגיאה', 'הפילטר ריק', 'warning');
                 }
 
                 const token = localStorage.getItem('webhook_token');
@@ -270,13 +287,12 @@ window.FilterEditorComponent = {
                 const res = await fetch('/ai/generate', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: this.aiPrompt, sample: sample }) });
                 const data = await res.json();
                 
-                if (data && data.code) { 
-                    this.rulesString = data.code; 
-                    if (data.description) this.rulesDescription = data.description; 
-                } else if (data && data.filter) {
+                if (data && data.filter) {
                     this.rulesString = JSON.stringify(data.filter, null, 2);
+                    if (data.description) this.rulesDescription = data.description;
+                    Swal.fire({ icon: 'success', title: 'פילטר נוצר!', text: data.description, toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
                 }
-            } catch (e) { Swal.fire('שגיאה', 'AI Failed', 'error'); } finally { this.aiLoading = false; }
+            } catch (e) { Swal.fire('שגיאה', 'AI Failed', 'error'); } finally { this.aiLoading = false; this.aiPrompt = ''; }
         }
     },
     template: `
@@ -355,6 +371,7 @@ window.FilterEditorComponent = {
                         <button @click="insertSnippet('OR')" class="text-[10px] bg-slate-50 border hover:border-blue-400 px-2 rounded text-slate-600 font-mono">$or</button>
                         <button @click="insertSnippet('AND')" class="text-[10px] bg-slate-50 border hover:border-blue-400 px-2 rounded text-slate-600 font-mono">$and</button>
                         <button @click="insertSnippet('REGEX')" class="text-[10px] bg-slate-50 border hover:border-blue-400 px-2 rounded text-slate-600 font-mono">$regex</button>
+                        <button @click="insertSnippet('FULLTEXT')" class="text-[10px] bg-indigo-50 border border-indigo-200 hover:border-indigo-400 px-2 rounded text-indigo-600 font-mono">חיפוש טקסט</button>
                     </div>
                 </div>
                 

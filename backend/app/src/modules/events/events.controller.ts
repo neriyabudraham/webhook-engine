@@ -86,8 +86,8 @@ export class EventsController {
 
   @Post(':id/replay')
   async replayEvent(@Request() req, @Param('id') id: string) {
-    // Find event and verify ownership
-    const event = await this.prisma.event.findFirst({
+    // Find original event and verify ownership
+    const originalEvent = await this.prisma.event.findFirst({
       where: { 
         id: id, 
         source: { userId: req.user.userId } 
@@ -95,7 +95,22 @@ export class EventsController {
       include: { source: true }
     });
 
-    if (!event) throw new NotFoundException('Event not found');
+    if (!originalEvent) throw new NotFoundException('Event not found');
+
+    // Create new event with same payload (marked as replay)
+    const newEvent = await this.prisma.event.create({
+      data: {
+        sourceId: originalEvent.sourceId,
+        payload: {
+          ...(originalEvent.payload as any),
+          _replay: {
+            originalEventId: originalEvent.id,
+            replayedAt: new Date().toISOString()
+          }
+        },
+        headers: originalEvent.headers
+      }
+    });
 
     // Increment usage counter
     await this.prisma.user.update({
@@ -105,15 +120,14 @@ export class EventsController {
 
     // Add to processing queue
     await this.webhookQueue.add('process-webhook', {
-      eventId: event.id,
-      sourceId: event.sourceId,
-      isReplay: true
+      eventId: newEvent.id,
+      sourceId: newEvent.sourceId
     }, {
       attempts: 3,
       backoff: 5000,
       removeOnComplete: true
     });
 
-    return { success: true, message: 'Event queued for replay' };
+    return { success: true, message: 'Event replayed', newEventId: newEvent.id };
   }
 }
