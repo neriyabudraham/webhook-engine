@@ -1,0 +1,347 @@
+const { createApp } = Vue;
+
+createApp({
+    data() {
+        return {
+            token: localStorage.getItem('webhook_token') || '',
+            currentPath: window.location.pathname,
+            loading: false,
+            mobileMenuOpen: false,
+            showUserMenu: false,
+            
+            // Auth
+            error: '', success: '', showPassword: false,
+            form: { name: '', email: '', password: '' },
+            
+            // Data
+            user: { name: 'טוען...', email: '', plan: 'Free', usageCount: 0, monthlyLimit: 10000 },
+            sources: [],
+            destinations: [],
+            events: [],
+            currentSource: null,
+            currentDest: null,
+            currentEvent: null,
+            
+            // UI
+            showSourceModal: false,
+            newSourceName: ''
+        }
+    },
+    computed: {
+        currentView() {
+            if (this.isRoute('admin')) return window.AdminComponent;
+            if (this.isRoute('events') || this.currentPath.startsWith('/events/')) return window.EventsComponent;
+            if (this.currentPath.startsWith('/filter-editor/') && window.FilterEditorComponent) return window.FilterEditorComponent;
+            if (this.isRoute('dashboard')) return window.DashboardComponent;
+            if (this.isRoute('sources')) return window.SourcesComponent;
+            if (this.isRoute('destinations')) return window.DestinationsComponent;
+            if (this.currentPath.startsWith('/destinations/') && window.DestinationDetailsComponent) return window.DestinationDetailsComponent;
+            if (this.isRoute('source-details')) return window.SourceDetailsComponent;
+            // --- השורה החדשה: ---
+            if (this.isRoute('dest-details')) return window.DestinationDetailsComponent;
+            if (this.isRoute('connections')) return window.ConnectionsComponent;
+            if (this.currentPath.startsWith('/events/') && window.EventsComponent) return window.EventsComponent;
+            // --------------------
+            return null;
+        },
+        pageTitle() {
+            if (this.currentPath.includes('dashboard')) return 'דף הבית';
+            if (this.currentPath.includes('sources')) return 'מקורות';
+            if (this.currentPath.includes('connections')) return 'מפת חיבורים';
+            return 'WebhookEngine';
+        },
+        userInitials() { 
+            if (!this.user || !this.user.name) return 'U'; 
+            try { return this.user.name.substring(0, 2).toUpperCase(); } catch (e) { return 'U'; } 
+        },
+        usagePercentage() { 
+            if (!this.user.monthlyLimit) return 0; 
+            return Math.min(100, Math.round((this.user.usageCount / (this.user.monthlyLimit || 1)) * 100));
+        }
+    },
+    mounted() {
+        window.onpopstate = () => { this.currentPath = window.location.pathname; this.handleRedirects(); };
+        this.handleRedirects();
+        if (this.token) this.fetchData();
+    },
+    methods: {
+        isAuthRoute(name) {
+            const path = this.currentPath;
+            if (name === 'login') return path === '/login' || (path === '/' && !this.token);
+            if (name === 'register') return path === '/register';
+            if (name === 'forgot-password') return path === '/forgot-password';
+            return false;
+        },
+        isRoute(name) {
+            if (name === 'admin') return this.currentPath === '/admin';
+            if (name === 'dashboard') return this.currentPath === '/dashboard' || (this.currentPath === '/' && this.token);
+            if (name === 'source-details') return this.currentPath.startsWith('/sources/') && this.currentPath.split('/').length === 3;
+            // --- השורה החדשה: ---
+            if (name === 'dest-details') return this.currentPath.startsWith('/destinations/') && this.currentPath.split('/').length === 3;
+            if (name === 'connections') return this.currentPath === '/connections';
+            if (name === 'filter-editor') return this.currentPath.startsWith('/filter-editor/');
+            // --------------------
+            return this.currentPath === '/' + name;
+        },
+        navigate(path) {
+            window.history.pushState({}, "", path);
+            this.currentPath = path;
+            this.mobileMenuOpen = false;
+            this.handleRedirects();
+        },
+        handleRedirects() {
+            const isGuestPage = ['/login', '/register', '/forgot-password'].includes(this.currentPath);
+            const isRoot = this.currentPath === '/';
+            
+            if (this.token) {
+                // אם מחובר ונמצא בדף לוגין או בשורש -> לך לדאשבורד
+                if (isGuestPage || (isRoot && !this.isRoute('dashboard'))) {
+                    this.navigate('/dashboard');
+                }
+                
+                // 1. טעינת נתונים בכניסה ישירה למקור
+                if (this.currentPath.startsWith('/sources/') && this.currentPath.split('/').length === 3) {
+                    this.fetchSourceDetails(this.currentPath.split('/')[2]);
+                }
+                
+                // 2. טעינת נתונים בכניסה ישירה ליעד
+                if (this.currentPath.startsWith('/destinations/') && this.currentPath.split('/').length === 3) {
+                    this.fetchDestDetails(this.currentPath.split('/')[2]);
+                }
+
+                // 3. טעינת נתונים בכניסה לעורך הפילטרים (צריך את פרטי היעד)
+                if (this.currentPath.startsWith('/filter-editor/') && this.currentPath.split('/').length === 3) {
+                    this.fetchDestDetails(this.currentPath.split('/')[2]);
+                }
+                
+                if (this.currentPath.startsWith('/events/') && this.currentPath.split('/').length === 3) {
+                    this.fetchEventDetails(this.currentPath.split('/')[2]);
+                }
+
+            } else {
+                // אם לא מחובר - לך ללוגין
+                if (!isGuestPage) {
+                    window.location.href = '/login';
+                }
+            }
+        },
+        async api(endpoint, method='GET', body=null) {
+            try {
+                const opts = { method, headers: { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' } };
+                if (body) opts.body = JSON.stringify(body);
+                const res = await fetch(endpoint, opts);
+                if (res.status === 401) { this.performLogout(); return null; }
+                return await res.json();
+            } catch (e) { return null; }
+        },
+        async fetchData() {
+            this.loading = true;
+            const [u, s, d, e] = await Promise.all([
+                this.api('/users/me'),
+                this.api('/my/sources'),
+                this.api('/my/destinations'),
+                this.api('/my/events')
+            ]);
+            if (u) this.user = u;
+            if (s) this.sources = s || [];
+            if (d) this.destinations = d || [];
+            if (e) this.events = e || [];
+            this.loading = false;
+        },
+        async fetchSourceDetails(id) {
+            this.loading = true;
+            const data = await this.api('/my/sources/' + id);
+            if (data) this.currentSource = data; else this.navigate('/sources');
+            this.loading = false;
+        },
+
+        async handleCreateSource(name) { await this.api('/my/sources', 'POST', { name }); this.fetchData(); },
+
+        handleDeleteSource(id) { Swal.fire({title:'למחוק?', icon:'warning', showCancelButton:true, confirmButtonColor:'#ef4444', confirmButtonText:'מחק'}).then(async(r)=>{ if(r.isConfirmed) { await this.api('/my/sources/'+id, 'DELETE'); if(this.currentSource?.id === id) this.navigate('/sources'); this.fetchData(); } }); },
+
+        async handleUpdateSource({id, name}) { await this.api('/my/sources/' + id, 'PATCH', { name }); this.fetchData(); },
+
+        async handleCreateDest(data) { const clean = data.filters.filter(f => f.key); await this.api('/my/destinations', 'POST', { ...data, filters: clean }); this.fetchData(); if(this.currentSource) this.fetchSourceDetails(this.currentSource.id); },
+        
+        async handleUpdateDest(data) {
+            await this.api('/my/destinations/' + data.id, 'PATCH', data);
+            this.fetchDestDetails(data.id); // רענון המידע במסך
+            this.fetchData(); // רענון כללי
+            Swal.fire({ icon: 'success', title: 'עודכן בהצלחה', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+        },
+        handleDeleteDest(id) { Swal.fire({title:'למחוק יעד?', icon:'warning', showCancelButton:true, confirmButtonColor:'#ef4444'}).then(async(r)=>{ if(r.isConfirmed) { await this.api('/my/destinations/'+id, 'DELETE'); this.fetchData(); if(this.currentSource) this.fetchSourceDetails(this.currentSource.id); } }); },
+        
+        async login() {
+            this.loading = true; this.error = '';
+            try {
+                const res = await fetch('/auth/login', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({email: this.form.email, password: this.form.password})});
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'שגיאה');
+                this.token = data.access_token;
+                localStorage.setItem('webhook_token', this.token);
+                this.fetchData();
+                this.navigate('/dashboard');
+            } catch (e) { this.error = 'פרטים שגויים'; } finally { this.loading = false; }
+        },
+        
+        async fetchDestDetails(id) {
+            this.loading = true;
+            console.log('Loading destination:', id);
+            // קריאה לשרת לקבלת פרטי היעד כולל המקור המחובר וסטטיסטיקות
+            const data = await this.api('/my/destinations/' + id);
+            
+            if (data && data.id) {
+                this.currentDest = data;
+            } else {
+                console.error('Destination not found');
+                this.navigate('/destinations');
+            }
+            this.loading = false;
+        },
+        
+        // הוסף את הפונקציה הזו:
+        async fetchEventDetails(id) {
+            this.loading = true;
+            console.log('Fetching event:', id);
+            const d = await this.api('/my/events/' + id);
+            if (d) {
+                this.currentEvent = d;
+                console.log('Event loaded:', d.id);
+            } else {
+                this.navigate('/events');
+            }
+            this.loading = false;
+        },
+
+        getWebhookUrl(slug) { return window.location.origin + '/webhook/' + slug; },
+        copyToClipboard(text) { navigator.clipboard.writeText(text); Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 }).fire({ icon: 'success', title: 'הועתק' }); }
+    },
+    // ה-TEMPLATE המלא והמאוחד (Guest + App)
+    template: `
+    <div class="w-full h-full">
+        
+        <div v-if="!token" class="h-full flex flex-col md:flex-row shadow-2xl overflow-hidden">
+            <div class="w-full md:w-1/2 lg:w-5/12 bg-white h-full flex items-center justify-center p-8 relative z-10 overflow-y-auto">
+                 <div class="w-full max-w-md">
+                    <div class="mb-10 text-center md:text-right">
+                        <div class="flex items-center justify-center md:justify-start gap-3 text-indigo-600 mb-2"><i class="fa-solid fa-bolt text-3xl"></i><span class="text-3xl font-black tracking-tight">WebhookEngine</span></div>
+                        <p class="text-gray-500 text-sm">פלטפורמת ה-Webhooks המתקדמת בישראל</p>
+                    </div>
+                    <div v-if="error" class="mb-6 bg-red-50 border-r-4 border-red-500 p-4 rounded text-red-700 text-sm">{{ error }}</div>
+                    
+                    <div v-if="isAuthRoute('login')">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6">כניסה למערכת</h2>
+                        <form @submit.prevent="login" class="space-y-5">
+                            <input v-model="form.email" type="email" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="אימייל" required>
+                            <input v-model="form.password" type="password" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="סיסמה" required>
+                            <button type="submit" :disabled="loading" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-lg shadow-lg transition disabled:opacity-50">
+                                <span v-if="loading">מתחבר...</span><span v-else>התחבר</span>
+                            </button>
+                        </form>
+                    </div>
+                 </div>
+            </div>
+            <div class="hidden md:flex w-1/2 lg:w-7/12 animated-bg relative items-center justify-center p-12 text-white">
+                <div class="text-center"><h1 class="text-5xl font-extrabold mb-4">WebhookEngine</h1></div>
+            </div>
+        </div>
+
+        <div v-else class="flex w-full h-full relative">
+
+            <aside :class="mobileMenuOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'" class="fixed md:static inset-y-0 right-0 w-72 bg-white border-l border-slate-200 flex flex-col z-50 transition-transform duration-300 ease-in-out">
+
+                <div class="h-20 flex items-center px-8 border-b border-slate-50">
+
+                    <h1 class="text-xl font-bold tracking-tight text-slate-800">Webhook<span class="text-blue-600">Engine</span></h1>
+
+                    <button @click="mobileMenuOpen = false" class="mr-auto md:hidden text-slate-400 p-2"><i class="fa-solid fa-xmark text-xl"></i></button>
+
+                </div>
+
+                <nav class="flex-1 py-8 px-4 space-y-1 overflow-y-auto">
+                    <p class="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">תפריט ראשי</p>
+                    
+                    <a href="#" @click.prevent="navigate('/dashboard')" :class="{'active': isRoute('dashboard')}" class="nav-link flex items-center px-4 py-3 rounded-lg text-slate-600 hover:bg-slate-50 transition group font-medium text-sm mb-1">
+                        <i class="fa-solid fa-house w-5 ml-3 opacity-70 group-hover:opacity-100 transition"></i> דף הבית
+                    </a>
+                    
+                    <a href="#" @click.prevent="navigate('/sources')" :class="{'active': isRoute('sources') || isRoute('source-details')}" class="nav-link flex items-center px-4 py-3 rounded-lg text-slate-600 hover:bg-slate-50 transition group font-medium text-sm mb-1">
+                        <i class="fa-solid fa-satellite-dish w-5 ml-3 opacity-70 group-hover:opacity-100 transition"></i> מקורות
+                    </a>
+                    
+                    <a href="#" @click.prevent="navigate('/destinations')" :class="{'active': isRoute('destinations') || isRoute('dest-details') || isRoute('filter-editor')}" class="nav-link flex items-center px-4 py-3 rounded-lg text-slate-600 hover:bg-slate-50 transition group font-medium text-sm mb-1">
+                        <i class="fa-solid fa-share-nodes w-5 ml-3 opacity-70 group-hover:opacity-100 transition"></i> יעדים
+                    </a>
+                    
+                    <a href="#" @click.prevent="navigate('/connections')" :class="{'active': isRoute('connections')}" class="nav-link flex items-center px-4 py-3 rounded-lg text-slate-600 hover:bg-slate-50 transition group font-medium text-sm mb-1">
+                        <i class="fa-solid fa-diagram-project w-5 ml-3 opacity-70 group-hover:opacity-100 transition"></i> מפת חיבורים
+                    </a>
+
+                    <a href="#" @click.prevent="navigate('/events')" :class="{'active': isRoute('events') || isRoute('event-details')}" class="nav-link flex items-center px-4 py-3 rounded-lg text-slate-600 hover:bg-slate-50 transition group font-medium text-sm mb-1">
+                        <i class="fa-solid fa-clock-rotate-left w-5 ml-3 opacity-70 group-hover:opacity-100 transition"></i> אירועים ולוגים
+                    </a>
+
+                    <a v-if="user.role === 'ADMIN'" href="#" @click.prevent="navigate('/admin')" :class="{'active': isRoute('admin')}" class="nav-link flex items-center px-4 py-3 rounded-lg text-red-600 bg-red-50/50 hover:bg-red-50 transition group font-medium text-sm mb-1 mt-6 border border-red-100">
+                        <i class="fa-solid fa-user-shield w-5 ml-3 opacity-70 group-hover:opacity-100 transition"></i> ניהול מערכת
+                    </a>
+                </nav>
+
+                <div class="p-4 border-t border-slate-100 bg-slate-50 relative">
+
+                    <div @click="showUserMenu = !showUserMenu" class="flex items-center gap-3 cursor-pointer hover:bg-white p-2 rounded-lg transition">
+
+                        <div class="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">{{ userInitials }}</div>
+
+                        <div class="flex-1 min-w-0"><p class="text-sm font-bold text-slate-700 truncate">{{ user.name }}</p></div>
+
+                    </div>
+
+                     <div v-if="showUserMenu" class="absolute bottom-full left-0 w-full mb-2 px-2 z-50 animate-fade-in-up">
+
+                        <div class="bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden">
+
+                            <a href="#" @click.prevent="confirmLogout" class="block px-4 py-3 text-sm text-red-600 hover:bg-red-50 font-medium"><i class="fa-solid fa-right-from-bracket ml-2"></i> התנתק</a>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </aside>
+
+            <main class="flex-1 flex flex-col h-full overflow-hidden bg-[#f8fafc]">
+                <header class="h-20 flex items-center justify-between px-8 bg-white border-b border-slate-200 sticky top-0 z-30">
+                    <div class="flex items-center gap-4">
+                        <button @click="mobileMenuOpen = true" class="md:hidden text-slate-500 hover:text-blue-600 p-1"><i class="fa-solid fa-bars text-xl"></i></button>
+                        <h2 class="text-xl font-bold text-slate-800">{{ pageTitle }}</h2>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">ניצול: <span class="text-indigo-600">{{ user.usageCount }} / {{ user.monthlyLimit }}</span></div>
+                    </div>
+                </header>
+                
+                <div class="flex-1 overflow-y-auto p-8">
+                    <component 
+                        :is="currentView" 
+                        :user="user" 
+                        :sources="sources" 
+                        :destinations="destinations" 
+                        :events="events"  :current-source="currentSource"
+                        :current-dest="currentDest"
+                        @navigate="navigate"
+                        @create-source="handleCreateSource"
+                        @delete-source="handleDeleteSource"
+                        @update-source="handleUpdateSource"
+                        @create-dest="handleCreateDest"
+                        @update-dest="handleUpdateDest"
+                        @delete-dest="handleDeleteDest">
+                    </component>
+                
+                    <div v-if="!currentView" class="flex justify-center py-20"><p class="text-slate-400">טוען...</p></div>
+                </div>
+            </main>
+        </div>
+    </div>
+    `
+}).mount('#app');

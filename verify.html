@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>אימות חשבון | WebhookEngine</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700&display=swap'); body { font-family: 'Heebo', sans-serif; }</style>
+</head>
+<body class="bg-gray-50 h-screen w-full overflow-hidden">
+    <div id="app" class="h-full flex flex-col md:flex-row shadow-2xl overflow-hidden" v-cloak>
+        
+        <div class="w-full md:w-1/2 lg:w-5/12 bg-white h-full flex items-center justify-center p-8 md:p-12 relative z-10">
+            <div class="w-full max-w-md text-center">
+                
+                <div class="mb-10 text-center md:text-right">
+                    <div class="flex items-center justify-center md:justify-start gap-3 text-indigo-600 mb-2">
+                        <i class="fa-solid fa-bolt text-3xl"></i>
+                        <span class="text-3xl font-black tracking-tight">WebhookEngine</span>
+                    </div>
+                </div>
+
+                <div v-if="loading" class="text-center py-10">
+                    <i class="fa-solid fa-circle-notch fa-spin text-5xl text-indigo-600 mb-6"></i>
+                    <h2 class="text-2xl font-bold text-gray-800">מאמת את החשבון...</h2>
+                    <p class="text-gray-500 mt-2">אנא המתן מספר שניות</p>
+                </div>
+
+                <div v-else-if="error" class="text-center">
+                    <div class="bg-red-50 text-red-600 p-8 rounded-xl border border-red-100 mb-6">
+                        <i class="fa-solid fa-circle-xmark text-6xl mb-4"></i>
+                        <h3 class="text-2xl font-bold mb-2">האימות נכשל</h3>
+                        <p class="text-lg opacity-90">{{ errorMessage }}</p>
+                    </div>
+                    <a href="/login.html" class="inline-block bg-gray-800 text-white px-8 py-3 rounded-lg hover:bg-gray-900 transition font-bold shadow-lg">
+                        חזרה למסך כניסה
+                    </a>
+                </div>
+
+                <div v-else-if="success" class="text-center">
+                    <div class="mb-6 text-green-500 text-7xl animate-bounce">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                    <h3 class="text-3xl font-bold text-gray-800 mb-3">החשבון אומת בהצלחה!</h3>
+                    <p class="text-gray-600 mb-8 text-lg">ברוך הבא למערכת. כעת ניתן להתחבר.</p>
+                    
+                    <a href="/login.html" class="inline-block bg-indigo-600 text-white px-8 py-3.5 rounded-lg hover:bg-indigo-700 transition font-bold shadow-lg transform hover:-translate-y-1">
+                        עבור להתחברות <i class="fa-solid fa-arrow-left mr-2"></i>
+                    </a>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="hidden md:flex w-1/2 lg:w-7/12 bg-gray-900 relative items-center justify-center p-12 text-white">
+             <div class="absolute inset-0 bg-indigo-900 opacity-60"></div>
+             <div class="relative z-10 text-center">
+                <i class="fa-solid fa-user-check text-7xl mb-6 text-indigo-400"></i>
+                <h1 class="text-5xl font-extrabold mb-4">מתחילים לעבוד</h1>
+                <p class="text-xl opacity-80">חשבונך מאומת ומאובטח. ברוכים הבאים.</p>
+             </div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+        createApp({
+            data() {
+                return {
+                    loading: true,
+                    success: false,
+                    error: false,
+                    errorMessage: 'הקישור אינו תקין או שפג תוקפו.'
+                }
+            },
+            async mounted() {
+                // שליפת הטוקן מהכתובת
+                const urlParams = new URLSearchParams(window.location.search);
+                const token = urlParams.get('token');
+                
+                if (!token) {
+                    this.loading = false;
+                    this.error = true;
+                    return;
+                }
+
+                // השהייה קטנה לאסתטיקה (שיראו את הספינר) ואז שליחה לשרת
+                setTimeout(async () => {
+                    try {
+                        // קריאה לשרת לאימות
+                        const res = await fetch(`/auth/verify-email?token=${token}`);
+                        
+                        if (res.ok) {
+                            this.success = true;
+                        } else {
+                            this.error = true;
+                            // ניסיון לקרוא את הודעת השגיאה מהשרת
+                            try {
+                                const data = await res.json();
+                                if (data.message) this.errorMessage = data.message;
+                            } catch(e) {}
+                        }
+                    } catch (e) {
+                        this.error = true;
+                        this.errorMessage = 'שגיאת תקשורת עם השרת.';
+                    } finally {
+                        this.loading = false;
+                    }
+                }, 1500);
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

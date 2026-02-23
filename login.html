@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>כניסה למערכת | WebhookEngine</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
+        body { font-family: 'Heebo', sans-serif; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        
+        /* רקע צבעוני מונפש לצד השמאלי */
+        .animated-bg {
+            background: linear-gradient(-45deg, #4f46e5, #3b82f6, #06b6d4, #4338ca);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+        }
+        @keyframes gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 h-screen w-full overflow-hidden">
+    <div id="app" class="h-full flex flex-col md:flex-row shadow-2xl overflow-hidden">
+        
+        <div class="w-full md:w-1/2 lg:w-5/12 bg-white h-full flex items-center justify-center p-8 md:p-12 relative z-10">
+            <div class="w-full max-w-md">
+                
+                <div class="mb-10 text-center md:text-right">
+                    <div class="flex items-center justify-center md:justify-start gap-3 text-indigo-600 mb-2">
+                        <i class="fa-solid fa-bolt text-3xl"></i>
+                        <span class="text-3xl font-black tracking-tight">WebhookEngine</span>
+                    </div>
+                    <p class="text-gray-500 text-sm">פלטפורמת ה-Webhooks המתקדמת בישראל</p>
+                </div>
+
+                <transition name="fade">
+                    <div v-if="error" class="mb-6 bg-red-50 border-r-4 border-red-500 p-4 rounded-lg flex items-center gap-3">
+                        <i class="fa-solid fa-circle-exclamation text-red-500"></i>
+                        <span class="text-red-700 text-sm font-medium">{{ error }}</span>
+                    </div>
+                </transition>
+                
+                <transition name="fade">
+                    <div v-if="success" class="mb-6 bg-green-50 border-r-4 border-green-500 p-4 rounded-lg flex items-center gap-3">
+                        <i class="fa-solid fa-circle-check text-green-500"></i>
+                        <span class="text-green-700 text-sm font-medium">{{ success }}</span>
+                    </div>
+                </transition>
+
+                <div v-if="view === 'login'">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">ברוך שובך! 👋</h2>
+                    <form @submit.prevent="login">
+                        <div class="space-y-5">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">כתובת אימייל</label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400">
+                                        <i class="fa-regular fa-envelope"></i>
+                                    </div>
+                                    <input v-model="form.email" type="email" class="w-full pr-10 pl-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:border-transparent transition outline-none" placeholder="name@company.com" required>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <label class="block text-sm font-medium text-gray-700">סיסמה</label>
+                                    <button type="button" @click="view = 'forgot'" class="text-xs font-medium text-indigo-600 hover:text-indigo-800 transition">שכחת סיסמה?</button>
+                                </div>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400">
+                                        <i class="fa-solid fa-lock"></i>
+                                    </div>
+                                    <input v-model="form.password" type="password" class="w-full pr-10 pl-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:border-transparent transition outline-none" placeholder="••••••••" required>
+                                </div>
+                            </div>
+                            <button type="submit" :disabled="loading" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-lg shadow-lg hover:shadow-xl transition transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed">
+                                <span v-if="loading"><i class="fa-solid fa-circle-notch fa-spin ml-2"></i> מתחבר...</span>
+                                <span v-else>כניסה למערכת</span>
+                            </button>
+                        </div>
+                    </form>
+                    <div class="mt-8 text-center text-sm text-gray-600">
+                        עדיין אין לך חשבון? 
+                        <button @click="view = 'register'" class="font-bold text-indigo-600 hover:text-indigo-800 transition">הירשם בחינם</button>
+                    </div>
+                </div>
+
+                <div v-if="view === 'register'">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-2">יצירת חשבון חדש 🚀</h2>
+                    <p class="text-gray-500 mb-6 text-sm">הצטרף וקבל 10,000 אירועים בחודש חינם</p>
+                    <form @submit.prevent="register">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">שם מלא</label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400">
+                                        <i class="fa-regular fa-user"></i>
+                                    </div>
+                                    <input v-model="form.name" type="text" class="w-full pr-10 pl-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="ישראל ישראלי" required>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">כתובת אימייל</label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400">
+                                        <i class="fa-regular fa-envelope"></i>
+                                    </div>
+                                    <input v-model="form.email" type="email" class="w-full pr-10 pl-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="name@company.com" required>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">סיסמה</label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400">
+                                        <i class="fa-solid fa-lock"></i>
+                                    </div>
+                                    <input v-model="form.password" type="password" class="w-full pr-10 pl-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="בחר סיסמה חזקה" required>
+                                </div>
+                            </div>
+                            <button type="submit" :disabled="loading" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-lg shadow-lg hover:shadow-xl transition transform hover:-translate-y-0.5 disabled:opacity-50">
+                                <span v-if="loading"><i class="fa-solid fa-circle-notch fa-spin ml-2"></i> יוצר חשבון...</span>
+                                <span v-else>הרשמה והתחלת עבודה</span>
+                            </button>
+                        </div>
+                    </form>
+                    <div class="mt-8 text-center text-sm text-gray-600">
+                        כבר יש לך חשבון? 
+                        <button @click="view = 'login'" class="font-bold text-indigo-600 hover:text-indigo-800 transition">התחבר כאן</button>
+                    </div>
+                </div>
+
+                <div v-if="view === 'forgot'">
+                    <button @click="view = 'login'" class="text-sm text-gray-500 hover:text-gray-700 mb-6 flex items-center gap-2 transition">
+                        <i class="fa-solid fa-arrow-right"></i> חזרה להתחברות
+                    </button>
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">שחזור סיסמה 🔒</h2>
+                    <p class="text-gray-600 mb-6 text-sm">הזן את האימייל שלך ונשלח לך קישור לאיפוס הסיסמה.</p>
+                    <form @submit.prevent="forgotPassword">
+                        <div class="space-y-5">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">כתובת אימייל</label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400">
+                                        <i class="fa-regular fa-envelope"></i>
+                                    </div>
+                                    <input v-model="form.email" type="email" class="w-full pr-10 pl-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="name@company.com" required>
+                                </div>
+                            </div>
+                            <button type="submit" :disabled="loading" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3.5 rounded-lg shadow-lg transition disabled:opacity-50">
+                                <span v-if="loading"><i class="fa-solid fa-circle-notch fa-spin ml-2"></i> שולח...</span>
+                                <span v-else>שלח קישור לאיפוס</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="hidden md:flex w-1/2 lg:w-7/12 animated-bg relative items-center justify-center p-12 text-white overflow-hidden">
+            <div class="absolute top-10 left-10 w-20 h-20 bg-white opacity-10 rounded-full blur-xl animate-pulse"></div>
+            <div class="absolute bottom-20 right-20 w-40 h-40 bg-indigo-300 opacity-20 rounded-full blur-2xl"></div>
+            
+            <div class="relative z-10 max-w-lg">
+                <div class="mb-8">
+                    <span class="bg-indigo-500 bg-opacity-30 border border-indigo-400 text-indigo-100 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">Enterprise Grade</span>
+                </div>
+                <h1 class="text-5xl font-extrabold mb-6 leading-tight">שלוט בזרימת המידע שלך.</h1>
+                <p class="text-indigo-100 text-lg mb-8 leading-relaxed">
+                    מערכת ניהול Webhooks מתקדמת עם כלי סינון, ניתוב חכם, ניטור בזמן אמת ומגבלות אבטחה. כל מה שצריך כדי לחבר בין שירותים בביטחון.
+                </p>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-white bg-opacity-10 backdrop-blur-sm p-4 rounded-lg border border-white border-opacity-10">
+                        <i class="fa-solid fa-filter text-2xl mb-2 text-blue-300"></i>
+                        <h3 class="font-bold">סינון חכם</h3>
+                        <p class="text-xs text-indigo-200 opacity-80">שלח רק מה שחשוב</p>
+                    </div>
+                    <div class="bg-white bg-opacity-10 backdrop-blur-sm p-4 rounded-lg border border-white border-opacity-10">
+                        <i class="fa-solid fa-rotate-right text-2xl mb-2 text-green-300"></i>
+                        <h3 class="font-bold">ניסיונות חוזרים</h3>
+                        <p class="text-xs text-indigo-200 opacity-80">לא מאבדים מידע לעולם</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    view: 'login', // login, register, forgot
+                    loading: false,
+                    error: '',
+                    success: '',
+                    form: {
+                        name: '',
+                        email: '',
+                        password: ''
+                    }
+                }
+            },
+            methods: {
+                async login() {
+                    this.loading = true;
+                    this.error = '';
+                    try {
+                        const res = await fetch('/auth/login', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({email: this.form.email, password: this.form.password})
+                        });
+                        const data = await res.json();
+                        
+                        if (!res.ok) throw new Error(data.message || 'שגיאת התחברות');
+                        
+                        localStorage.setItem('webhook_token', data.access_token);
+                        
+                        // --- התיקון כאן: מעבר לדף הבית הראשי ---
+                        window.location.href = '/'; 
+                        
+                    } catch (e) {
+                        this.error = 'הפרטים שהזנת שגויים, אנא נסה שנית.';
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async register() {
+                    this.loading = true;
+                    this.error = '';
+                    try {
+                        const res = await fetch('/auth/register', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(this.form)
+                        });
+                        const data = await res.json();
+                        
+                        if (!res.ok) throw new Error(data.message || 'שגיאה בהרשמה');
+
+                        this.success = 'ההרשמה בוצעה בהצלחה! שלחנו מייל לאימות החשבון, יש לאשר אותו לפני הכניסה.';
+                        this.view = 'login';
+                        this.form.password = ''; // ניקוי סיסמה
+                        
+                    } catch (e) {
+                        this.error = e.message;
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async forgotPassword() {
+                    this.loading = true;
+                    this.error = '';
+                    this.success = '';
+                    
+                    try {
+                        // שליחה לשרת
+                        const res = await fetch('/auth/forgot-password', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ email: this.form.email })
+                        });
+                        
+                        // גם אם המייל לא קיים, מטעמי אבטחה נציג הודעת הצלחה
+                        // כדי לא לחשוף מי רשום ומי לא
+                        this.success = 'אם המייל קיים במערכת, נשלח אליו קישור לאיפוס סיסמה בדקות הקרובות.';
+                        this.form.email = ''; // ניקוי שדה
+                    } catch (e) {
+                        this.error = 'אירעה שגיאה בשליחת הבקשה. נסה שוב מאוחר יותר.';
+                        console.error(e);
+                    } finally {
+                        this.loading = false;
+                    }
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
