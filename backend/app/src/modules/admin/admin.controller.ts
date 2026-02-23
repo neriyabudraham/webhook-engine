@@ -67,9 +67,9 @@ export class AdminController {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
     
-    // Generate token for the target user
+    // Generate token for the target user (use 'sub' to match JWT strategy)
     const token = this.jwtService.sign({
-      userId: user.id,
+      sub: user.id,
       email: user.email,
       role: user.role,
       impersonatedBy: req.user.userId
