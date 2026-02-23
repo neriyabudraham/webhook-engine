@@ -85,7 +85,7 @@ export class AiService {
           result = JSON.parse(content);
       } catch (e) {
           console.error('Failed to parse AI JSON', content);
-          return { code: "false", description: "שגיאה בפענוח תשובת ה-AI" };
+          return { filter: { _error: true }, description: "שגיאה בפענוח תשובת ה-AI" };
       }
 
       return { 
