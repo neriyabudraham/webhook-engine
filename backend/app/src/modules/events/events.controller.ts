@@ -1,11 +1,16 @@
-import { Controller, Get, UseGuards, Request, Param, NotFoundException, Query } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards, Request, Param, NotFoundException, Query } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { PrismaService } from '../../prisma.service';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 
 @Controller('my/events')
 @UseGuards(AuthGuard('jwt'))
 export class EventsController {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @InjectQueue('webhook-processing') private webhookQueue: Queue,
+  ) {}
 
   @Get()
   async getEvents(@Request() req, @Query('limit') limitStr: string, @Query('sourceId') sourceId: string, @Query('search') search: string) {
@@ -77,5 +82,38 @@ export class EventsController {
 
     if (!event) throw new NotFoundException('Event not found');
     return event;
+  }
+
+  @Post(':id/replay')
+  async replayEvent(@Request() req, @Param('id') id: string) {
+    // Find event and verify ownership
+    const event = await this.prisma.event.findFirst({
+      where: { 
+        id: id, 
+        source: { userId: req.user.userId } 
+      },
+      include: { source: true }
+    });
+
+    if (!event) throw new NotFoundException('Event not found');
+
+    // Increment usage counter
+    await this.prisma.user.update({
+      where: { id: req.user.userId },
+      data: { usageCount: { increment: 1 } }
+    });
+
+    // Add to processing queue
+    await this.webhookQueue.add('process-webhook', {
+      eventId: event.id,
+      sourceId: event.sourceId,
+      isReplay: true
+    }, {
+      attempts: 3,
+      backoff: 5000,
+      removeOnComplete: true
+    });
+
+    return { success: true, message: 'Event queued for replay' };
   }
 }

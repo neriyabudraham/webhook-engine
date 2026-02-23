@@ -103,6 +103,9 @@ const eventsTemplate = `
                                 {{ JSON.stringify(ev.payload).substring(0, 60) }}...
                             </td>
                             <td class="px-6 py-4 text-left">
+                                <button @click.stop="replay(ev.id)" class="text-green-600 hover:underline text-xs font-bold ml-3" title="שלח מחדש">
+                                    <i class="fa-solid fa-rotate-right"></i> Replay
+                                </button>
                                 <button @click.stop="copy(ev.payload)" class="text-blue-600 hover:underline text-xs font-bold">העתק JSON</button>
                             </td>
                         </tr>
@@ -135,6 +138,9 @@ const eventsTemplate = `
                     <p class="text-sm text-slate-500 mt-1">התקבל ב: {{ new Date(currentEvent.createdAt).toLocaleString('he-IL') }} ממקור: <b>{{ currentEvent.source ? currentEvent.source.name : 'לא ידוע' }}</b></p>
                 </div>
             </div>
+            <button @click="replay(currentEvent.id)" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 shadow-sm flex items-center gap-2 transition ml-2">
+                <i class="fa-solid fa-rotate-right"></i> שלח מחדש
+            </button>
             <button @click="showFilterModal = true" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-sm flex items-center gap-2 transition">
                 <i class="fa-solid fa-wand-magic-sparkles"></i> השתמש כפילטר
             </button>
@@ -266,6 +272,27 @@ window.EventsComponent = {
         changePage(newPage) { if (newPage < 1 || newPage > this.totalPages) return; this.page = newPage; this.fetchEvents(); },
         resetFilters() { this.searchTerm = ''; this.startDate = ''; this.endDate = ''; this.limit = 20; this.page = 1; this.fetchEvents(); },
         copy(data) { navigator.clipboard.writeText(JSON.stringify(data, null, 2)); Swal.fire({ icon: 'success', title: 'הועתק!', toast: true, position: 'top-end', showConfirmButton: false, timer: 1000 }); },
+        async replay(eventId) {
+            const result = await Swal.fire({
+                title: 'שליחה מחדש?',
+                text: 'האירוע יישלח מחדש לכל היעדים המוגדרים. פעולה זו תיספר למכסה.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#10b981',
+                cancelButtonColor: '#6b7280',
+                confirmButtonText: 'כן, שלח מחדש',
+                cancelButtonText: 'ביטול'
+            });
+            if (!result.isConfirmed) return;
+            
+            try {
+                await this.$root.api('/my/events/' + eventId + '/replay', { method: 'POST' });
+                Swal.fire({ icon: 'success', title: 'נשלח!', text: 'האירוע נוסף לתור העיבוד', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                setTimeout(() => this.fetchEvents(), 2000);
+            } catch (e) {
+                Swal.fire({ icon: 'error', title: 'שגיאה', text: 'לא ניתן לשלוח מחדש' });
+            }
+        },
         goToEditor() {
             if (!this.targetDestId) return;
             localStorage.setItem('temp_filter_payload', JSON.stringify(this.currentEvent.payload));
