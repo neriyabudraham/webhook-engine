@@ -189,7 +189,7 @@ createApp({
             this.impersonating = null;
             window.location.href = '/login'; 
         },
-        async exitImpersonation() {
+        exitImpersonation() {
             const adminToken = localStorage.getItem('admin_token');
             if (!adminToken) {
                 this.performLogout();
@@ -201,14 +201,8 @@ createApp({
             localStorage.removeItem('admin_token');
             localStorage.removeItem('impersonating');
             
-            this.token = adminToken;
-            this.impersonating = null;
-            
-            // Refresh data with admin token
-            await this.fetchData();
-            this.navigate('/admin');
-            
-            Swal.fire({ icon: 'success', title: 'חזרת לחשבון המנהל', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+            // Full reload to reset all state
+            window.location.href = '/admin';
         },
         getWebhookUrl(slug) { return window.location.origin + '/webhook/' + slug; },
         copyToClipboard(text) { navigator.clipboard.writeText(text); Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 }).fire({ icon: 'success', title: 'הועתק' }); },
