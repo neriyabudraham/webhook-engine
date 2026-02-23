@@ -364,7 +364,7 @@ window.EventsComponent = {
             if (!result.isConfirmed) return;
             
             try {
-                await this.$root.api('/my/events/' + eventId + '/replay', { method: 'POST' });
+                await this.$root.api('/my/events/' + eventId + '/replay', 'POST');
                 Swal.fire({ icon: 'success', title: 'נשלח!', text: 'האירוע נוסף לתור העיבוד', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
                 setTimeout(() => this.fetchEvents(), 2000);
             } catch (e) {
