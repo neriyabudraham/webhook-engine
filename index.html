@@ -69,7 +69,7 @@
                         <i class="fa-solid fa-clock-rotate-left w-5 ml-3 opacity-70 group-hover:opacity-100 transition"></i> אירועים ולוגים
                     </a>
 
-                    <a v-if="user.role === 'ADMIN'" href="#" @click.prevent="navigate('/admin')" :class="{'active': isRoute('admin')}" class="nav-link flex items-center px-4 py-3 rounded-lg text-red-600 bg-red-50/50 hover:bg-red-50 transition group font-medium text-sm mb-1 mt-6 border border-red-100">
+                    <a v-if="user.role === 'ADMIN' || impersonating" href="#" @click.prevent="navigate('/admin')" :class="{'active': isRoute('admin')}" class="nav-link flex items-center px-4 py-3 rounded-lg text-red-600 bg-red-50/50 hover:bg-red-50 transition group font-medium text-sm mb-1 mt-6 border border-red-100">
                         <i class="fa-solid fa-user-shield w-5 ml-3 opacity-70 group-hover:opacity-100 transition"></i> ניהול מערכת
                     </a>
 

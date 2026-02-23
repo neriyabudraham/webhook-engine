@@ -10,7 +10,7 @@ window.AdminComponent = {
     async mounted() {
         this.loading = true;
         try {
-            const res = await this.$root.api('/admin/users');
+            const res = await this.adminApi('/admin/users');
             if (Array.isArray(res)) {
                 this.users = res;
             } else {
@@ -92,9 +92,25 @@ window.AdminComponent = {
         </div>
     </div>`,
     methods: {
+        async adminApi(endpoint, method = 'GET', body = null) {
+            // Use admin token if impersonating, otherwise use regular token
+            const adminToken = localStorage.getItem('admin_token');
+            const token = adminToken || this.$root.token;
+            
+            try {
+                const opts = { method, headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } };
+                if (body) opts.body = JSON.stringify(body);
+                const res = await fetch(endpoint, opts);
+                if (!res.ok) throw new Error(res.statusText);
+                return await res.json();
+            } catch (e) { 
+                console.error(e); 
+                return null; 
+            }
+        },
         async deleteUser(id) {
             if(confirm('למחוק משתמש זה?')) {
-                await this.$root.api('/admin/users/' + id, 'DELETE');
+                await this.adminApi('/admin/users/' + id, 'DELETE');
                 this.users = this.users.filter(u => u.id !== id);
             }
         },
@@ -102,7 +118,7 @@ window.AdminComponent = {
             let newLimit = 10000;
             if(newPlan === 'PRO') newLimit = 100000;
             if(newPlan === 'ENTERPRISE') newLimit = 10000000;
-            await this.$root.api('/admin/users/' + user.id, 'PATCH', { plan: newPlan, monthlyLimit: newLimit });
+            await this.adminApi('/admin/users/' + user.id, 'PATCH', { plan: newPlan, monthlyLimit: newLimit });
             const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
             Toast.fire({ icon: 'success', title: 'החבילה עודכנה' });
         },
@@ -118,15 +134,17 @@ window.AdminComponent = {
             if (!result.isConfirmed) return;
             
             try {
-                const res = await this.$root.api('/admin/impersonate/' + user.id, 'POST');
+                const res = await this.adminApi('/admin/impersonate/' + user.id, 'POST');
                 if (res && res.token) {
-                    // Save admin token for return
-                    localStorage.setItem('admin_token', this.$root.token);
+                    // Save admin token for return (use current admin token or root token)
+                    const currentAdminToken = localStorage.getItem('admin_token') || this.$root.token;
+                    localStorage.setItem('admin_token', currentAdminToken);
                     localStorage.setItem('impersonating', JSON.stringify({ email: user.email, name: user.name }));
                     
                     // Set impersonated user token
                     localStorage.setItem('webhook_token', res.token);
                     this.$root.token = res.token;
+                    this.$root.impersonating = { email: user.email, name: user.name };
                     
                     // Refresh data
                     await this.$root.fetchData();
