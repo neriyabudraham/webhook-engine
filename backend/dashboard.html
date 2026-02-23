@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webhook Engine Dashboard</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div id="app" class="container mx-auto p-10">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">מערכת ניהול Webhooks 🚀</h1>
+            <button @click="fetchEvents" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
+                רענן נתונים 🔄
+            </button>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-md mb-8" v-if="!token">
+            <h2 class="text-xl font-semibold mb-4">התחברות למערכת</h2>
+            <p class="text-gray-600 mb-2">אנא הדבק את ה-Access Token שלך:</p>
+            <input type="text" v-model="inputToken" class="w-full p-3 border rounded mb-4" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+            <button @click="saveToken" class="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 w-full">
+                כנס לדאשבורד
+            </button>
+        </div>
+
+        <div v-else class="bg-white rounded-lg shadow-md overflow-hidden">
+            <table class="min-w-full leading-normal">
+                <thead>
+                    <tr>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">סטטוס</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">תאריך</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">מקור</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Payload</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="event in events" :key="event.id" class="hover:bg-gray-50">
+                        <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                            <span v-if="event.deliveries.length === 0" class="relative inline-block px-3 py-1 font-semibold text-gray-900 leading-tight">
+                                <span aria-hidden class="absolute inset-0 bg-gray-200 opacity-50 rounded-full"></span>
+                                <span class="relative">סונן / דילג</span>
+                            </span>
+                            <span v-else-if="event.deliveries[0].status === 200" class="relative inline-block px-3 py-1 font-semibold text-green-900 leading-tight">
+                                <span aria-hidden class="absolute inset-0 bg-green-200 opacity-50 rounded-full"></span>
+                                <span class="relative">הצלחה (200)</span>
+                            </span>
+                            <span v-else class="relative inline-block px-3 py-1 font-semibold text-red-900 leading-tight">
+                                <span aria-hidden class="absolute inset-0 bg-red-200 opacity-50 rounded-full"></span>
+                                <span class="relative">נכשל ({{ event.deliveries[0].status }})</span>
+                            </span>
+                        </td>
+                        <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                            {{ new Date(event.createdAt).toLocaleString() }}
+                        </td>
+                        <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                            <p class="text-gray-900 whitespace-no-wrap font-bold">{{ event.source.name }}</p>
+                            <p class="text-gray-500 text-xs">/{{ event.source.slug }}</p>
+                        </td>
+                        <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm font-mono text-xs">
+                            {{ JSON.stringify(event.payload).substring(0, 50) }}...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+        createApp({
+            data() {
+                return {
+                    token: localStorage.getItem('webhook_token') || '',
+                    inputToken: '',
+                    events: []
+                }
+            },
+            mounted() {
+                if (this.token) this.fetchEvents();
+            },
+            methods: {
+                saveToken() {
+                    this.token = this.inputToken;
+                    localStorage.setItem('webhook_token', this.token);
+                    this.fetchEvents();
+                },
+                async fetchEvents() {
+                    try {
+                        // שינוי קריטי: שימוש בנתיב יחסי
+                        const response = await fetch('/my/events', {
+                            headers: { 'Authorization': 'Bearer ' + this.token }
+                        });
+                        if (response.status === 401) {
+                            alert('הטוקן פג תוקף');
+                            this.token = ''; localStorage.removeItem('webhook_token'); return;
+                        }
+                        this.events = await response.json();
+                    } catch (error) { console.error(error); }
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>

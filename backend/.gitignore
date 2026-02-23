@@ -1,0 +1,13 @@
+.env
+*.log
+node_modules/
+__pycache__/
+
+# Database and Data
+postgres-data/
+redis-data/
+
+# Large files and backups
+*.tar
+*.zip
+*.gz

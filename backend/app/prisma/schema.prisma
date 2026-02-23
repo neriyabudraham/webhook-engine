@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum PlanTier {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum FilterType {
+  EQUALS
+  CONTAINS
+  NOT_CONTAINS
+  REGEX
+  EXISTS
+}
+
+enum SourceType {
+  WEBHOOK
+  EMAIL
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  password          String
+  name              String?
+  role              Role      @default(USER)
+  plan              PlanTier  @default(FREE)
+  monthlyLimit      Int       @default(10000)
+  usageCount        Int       @default(0)
+  billingCycleStart DateTime  @default(now())
+  
+  resetToken        String?   @unique
+  resetTokenExpiry  DateTime?
+  isVerified        Boolean   @default(false)
+  verificationToken String?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  sources           Source[]
+  
+  // התיקון: הוספת הקשר ההפוך למפתחות API
+  apiKeys           ApiKey[]
+
+  @@map("users")
+}
+
+model SystemSetting {
+  key   String @id
+  value String
+  @@map("system_settings")
+}
+
+model Source {
+  id             String        @id @default(uuid())
+  name           String
+  slug           String        @unique
+  userId         String
+  active         Boolean       @default(true)
+  secret         String?
+  type           SourceType    @default(WEBHOOK)
+  
+  archivedAt     DateTime?
+
+  user           User          @relation(fields: [userId], references: [id])
+  destinations   Destination[]
+  events         Event[]
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@map("sources")
+}
+
+model Destination {
+  id               String     @id @default(uuid())
+  sourceId         String
+  url              String
+  method           String     @default("POST")
+  headers          Json?
+  rules            Json?
+  rulesDescription String?
+  delay            Int        @default(0)
+
+  source           Source     @relation(fields: [sourceId], references: [id])
+  filters          Filter[]
+  deliveries       Delivery[]
+  
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@map("destinations")
+}
+
+model Filter {
+  id            String      @id @default(uuid())
+  destinationId String
+  key           String
+  operator      FilterType
+  value         String?
+  
+  destination   Destination @relation(fields: [destinationId], references: [id])
+
+  @@map("filters")
+}
+
+model Event {
+  id        String     @id @default(uuid())
+  sourceId  String
+  payload   Json
+  headers   Json
+  
+  source    Source     @relation(fields: [sourceId], references: [id])
+  deliveries Delivery[]
+  
+  createdAt DateTime   @default(now())
+
+  @@map("events")
+}
+
+model Delivery {
+  id            String      @id @default(uuid())
+  destinationId String
+  eventId       String
+  status        Int
+  responseBody  String?
+  duration      Int
+  
+  destination   Destination @relation(fields: [destinationId], references: [id])
+  event         Event       @relation(fields: [eventId], references: [id])
+  
+  createdAt     DateTime    @default(now())
+
+  @@map("deliveries")
+}
+
+model ApiKey {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  key       String   @unique
+  lastUsed  DateTime?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("api_keys")
+}
