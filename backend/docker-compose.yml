@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Database
   postgres:
@@ -42,9 +40,11 @@ services:
     networks:
       - webhook-network
 
-  # --- The Application (Immutable) ---
+  # --- The Application ---
   webhook-backend:
-    # שינוי קריטי: שימוש באימג' המוכן במקום בנייה
+    build:
+      context: ./app
+      dockerfile: Dockerfile
     image: webhook-engine-webhook-backend:latest
     container_name: webhook-backend
     restart: always
