@@ -181,10 +181,6 @@ window.DestinationsComponent = {
                 Swal.fire({ icon: 'warning', title: 'חסרים פרטים', text: 'יש לבחור מקור לשיוך', confirmButtonColor: '#4f46e5' });
                 return;
             }
-            if (this.newDest.url.includes('botomat.co.il')) {
-                Swal.fire({ icon: 'error', title: 'כתובת לא תקינה', text: 'לא ניתן להשתמש בכתובת המערכת כיעד', confirmButtonColor: '#d33' });
-                return;
-            }
             this.$emit('create-dest', this.newDest); 
             this.showModal = false; 
         },
